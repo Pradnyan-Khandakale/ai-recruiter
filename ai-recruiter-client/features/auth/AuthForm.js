@@ -10,18 +10,19 @@ import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const schema = z.object({
-  name: z.string().optional(),
-  email: z.string().trim().email("Please enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters")
-});
+const makeSchema = (mode) =>
+  z.object({
+    name: mode === "signup" ? z.string().trim().min(2, "Name must be at least 2 characters") : z.string().optional(),
+    email: z.string().trim().email("Please enter a valid email address"),
+    password: z.string().min(8, "Password must be at least 8 characters")
+  });
 
 export function AuthForm({ mode }) {
   const router = useRouter();
   const authenticate = useAuthStore((state) => state.authenticate);
   const loading = useAuthStore((state) => state.loading);
   const { register, handleSubmit, formState: { errors }, setError } = useForm({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(makeSchema(mode)),
     defaultValues: {
       name: "",
       email: "",
@@ -30,10 +31,6 @@ export function AuthForm({ mode }) {
   });
 
   async function onSubmit(values) {
-    if (mode === "signup" && (!values.name || values.name.trim().length < 2)) {
-      setError("name", { message: "Name must be at least 2 characters" });
-      return;
-    }
     try {
       await authenticate(mode, values);
       router.push("/dashboard");

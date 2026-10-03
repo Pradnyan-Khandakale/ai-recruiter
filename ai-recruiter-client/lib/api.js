@@ -1,15 +1,8 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 function getToken() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  const fromStorage = localStorage.getItem("recruitment_token");
-  if (fromStorage) {
-    return fromStorage;
-  }
-  const match = document.cookie.match(/(?:^|;\s*)recruitment_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : "";
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("recruitment_token") || document.cookie.match(/recruitment_token=([^;]+)/)?.[1] || "";
 }
 
 export class ApiError extends Error {

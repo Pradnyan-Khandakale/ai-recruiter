@@ -4,15 +4,17 @@ const User = require("../models/User");
 const { normalizeRole } = require("../utils/roles");
 
 async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  const token = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice(7)
+    : null;
+
+  if (!token) {
     return res.status(401).json({
       success: false,
       error: { message: "Authentication token is required" }
     });
   }
 
-  const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, env.jwtSecret);
     const user = await User.findById(decoded.id);
@@ -30,7 +32,7 @@ async function requireAuth(req, res, next) {
       name: user.name
     };
     return next();
-  } catch (error) {
+  } catch {
     return res.status(401).json({
       success: false,
       error: { message: "Invalid or expired authentication token" }
@@ -41,18 +43,10 @@ async function requireAuth(req, res, next) {
 function requireRole(role) {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: { message: "Authentication required" }
-      });
+      return res.status(401).json({ success: false, error: { message: "Authentication required" } });
     }
-    const userRole = normalizeRole(req.user.role);
-    const targetRole = normalizeRole(role);
-    if (userRole !== targetRole && userRole !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: { message: `Forbidden: requires ${targetRole} role` }
-      });
+    if (req.user.role !== role && req.user.role !== "admin") {
+      return res.status(403).json({ success: false, error: { message: `Forbidden: requires ${role} role` } });
     }
     return next();
   };

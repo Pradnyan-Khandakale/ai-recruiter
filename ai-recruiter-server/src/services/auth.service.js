@@ -20,23 +20,12 @@ function signToken(user) {
 function serializeUser(user) {
   if (!user) return null;
   return {
-    id: user._id ? user._id.toString() : user.id,
+    id: String(user._id || user.id),
     name: user.name,
     email: user.email,
-    role: normalizeRole(user.role),
+    role: user.role || "recruiter",
     created_at: user.created_at
   };
-}
-
-async function normalizeUserRole(user) {
-  const normalized = normalizeRole(user.role);
-  if (user.role !== normalized) {
-    user.role = normalized;
-    if (typeof user.save === "function") {
-      await user.save();
-    }
-  }
-  return user;
 }
 
 async function signup(payload) {
@@ -57,30 +46,20 @@ async function signup(payload) {
     role: normalizeRole(role)
   });
 
-  const token = signToken(user);
-  return { user: serializeUser(user), token };
+  return { user: serializeUser(user), token: signToken(user) };
 }
 
 async function login(payload) {
   const { email, password } = payload;
   const normalizedEmail = email.toLowerCase().trim();
   const user = await User.findOne({ email: normalizedEmail });
-  if (!user) {
+  if (!user || !(await bcrypt.compare(password, user.password))) {
     const error = new Error("Invalid email or password");
     error.statusCode = 401;
     throw error;
   }
 
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) {
-    const error = new Error("Invalid email or password");
-    error.statusCode = 401;
-    throw error;
-  }
-
-  await normalizeUserRole(user);
-  const token = signToken(user);
-  return { user: serializeUser(user), token };
+  return { user: serializeUser(user), token: signToken(user) };
 }
 
 async function me(userId) {
@@ -90,8 +69,7 @@ async function me(userId) {
     error.statusCode = 404;
     throw error;
   }
-  await normalizeUserRole(user);
   return serializeUser(user);
 }
 
-module.exports = { signup, login, me, signToken, serializeUser, normalizeUserRole };
+module.exports = { signup, login, me, signToken, serializeUser };

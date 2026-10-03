@@ -9,21 +9,17 @@ export const useRecruitmentStore = create((set) => ({
   workflows: [],
   analytics: null,
   async refreshDashboard() {
-    try {
-      const [jobsRes, candidatesRes, workflowsRes, analyticsRes] = await Promise.allSettled([
-        api.listJobs(),
-        api.listCandidates(),
-        api.listWorkflows(),
-        api.analytics()
-      ]);
-      set({
-        jobs: jobsRes.status === "fulfilled" && Array.isArray(jobsRes.value) ? jobsRes.value : [],
-        candidates: candidatesRes.status === "fulfilled" && Array.isArray(candidatesRes.value) ? candidatesRes.value : [],
-        workflows: workflowsRes.status === "fulfilled" && Array.isArray(workflowsRes.value) ? workflowsRes.value : [],
-        analytics: analyticsRes.status === "fulfilled" ? analyticsRes.value : null
-      });
-    } catch {
-      set({ jobs: [], candidates: [], workflows: [], analytics: null });
-    }
+    const [jobs, candidates, workflows, analytics] = await Promise.allSettled([
+      api.listJobs(),
+      api.listCandidates(),
+      api.listWorkflows(),
+      api.analytics()
+    ]);
+    set({
+      jobs: Array.isArray(jobs.value) ? jobs.value : [],
+      candidates: Array.isArray(candidates.value) ? candidates.value : [],
+      workflows: Array.isArray(workflows.value) ? workflows.value : [],
+      analytics: analytics.value || null
+    });
   }
 }));

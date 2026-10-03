@@ -1,9 +1,5 @@
 function normalizeRole(role) {
-  const normalized = String(role || "").toLowerCase().trim();
-  if (normalized === "admin") {
-    return "admin";
-  }
-  return "recruiter";
+  return String(role || "").toLowerCase().trim() === "admin" ? "admin" : "recruiter";
 }
 
 module.exports = { normalizeRole };
