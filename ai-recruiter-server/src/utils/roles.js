@@ -1,5 +1,8 @@
 function normalizeRole(role) {
-  // TODO: Map any stored role onto the supported "admin" or "recruiter" values.
+  const normalized = String(role || "").toLowerCase().trim();
+  if (normalized === "admin") {
+    return "admin";
+  }
   return "recruiter";
 }
 

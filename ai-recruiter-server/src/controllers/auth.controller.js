@@ -2,18 +2,18 @@ const authService = require("../services/auth.service");
 const { sendSuccess } = require("../utils/response");
 
 async function signup(req, res) {
-  // TODO: Register the recruiter through authService and respond with 201 { user, token }.
-  return res.status(501).json({ success: false, error: { message: "Signup is not implemented yet" } });
+  const result = await authService.signup(req.body);
+  return sendSuccess(res, result, 201);
 }
 
 async function login(req, res) {
-  // TODO: Authenticate through authService and respond with { user, token }.
-  return res.status(501).json({ success: false, error: { message: "Login is not implemented yet" } });
+  const result = await authService.login(req.body);
+  return sendSuccess(res, result, 200);
 }
 
 async function me(req, res) {
-  // TODO: Respond with the profile of the authenticated user.
-  return res.status(501).json({ success: false, error: { message: "Current user lookup is not implemented yet" } });
+  const user = await authService.me(req.user.id);
+  return sendSuccess(res, { user }, 200);
 }
 
 module.exports = { signup, login, me };

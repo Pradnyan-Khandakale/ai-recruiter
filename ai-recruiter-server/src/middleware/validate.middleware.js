@@ -1,7 +1,17 @@
 function validate(schema, source = "body") {
   return (req, res, next) => {
-    // TODO: Run schema.safeParse on req[source], respond with 400 and the flattened
-    // TODO: issues on failure, and replace req[source] with the parsed data on success.
+    const result = schema.safeParse(req[source]);
+    if (!result.success) {
+      const details = result.error.flatten().fieldErrors;
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "Validation failed",
+          details
+        }
+      });
+    }
+    req[source] = result.data;
     return next();
   };
 }

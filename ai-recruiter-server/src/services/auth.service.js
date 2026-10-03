@@ -5,34 +5,93 @@ const { env } = require("../config/env");
 const { normalizeRole } = require("../utils/roles");
 
 function signToken(user) {
-  // TODO: Sign a 7 day JWT carrying the user id, email, and normalized role.
-  return "";
+  const userId = user._id ? user._id.toString() : user.id;
+  return jwt.sign(
+    {
+      id: userId,
+      email: user.email,
+      role: normalizeRole(user.role)
+    },
+    env.jwtSecret,
+    { expiresIn: "7d" }
+  );
 }
 
 function serializeUser(user) {
-  // TODO: Return only the safe fields (id, name, email, role, created_at).
-  return null;
+  if (!user) return null;
+  return {
+    id: user._id ? user._id.toString() : user.id,
+    name: user.name,
+    email: user.email,
+    role: normalizeRole(user.role),
+    created_at: user.created_at
+  };
 }
 
 async function normalizeUserRole(user) {
-  // TODO: Persist the normalized role when the stored value is out of date.
+  const normalized = normalizeRole(user.role);
+  if (user.role !== normalized) {
+    user.role = normalized;
+    if (typeof user.save === "function") {
+      await user.save();
+    }
+  }
   return user;
 }
 
 async function signup(payload) {
-  // TODO: Reject duplicate emails with 409, hash the password with bcrypt,
-  // TODO: create the user, and return { user, token }.
-  throw Object.assign(new Error("Signup service is not implemented yet"), { statusCode: 501 });
+  const { name, email, password, role } = payload;
+  const normalizedEmail = email.toLowerCase().trim();
+  const existingUser = await User.findOne({ email: normalizedEmail });
+  if (existingUser) {
+    const error = new Error("Email already registered");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const user = await User.create({
+    name: name.trim(),
+    email: normalizedEmail,
+    password: hashedPassword,
+    role: normalizeRole(role)
+  });
+
+  const token = signToken(user);
+  return { user: serializeUser(user), token };
 }
 
 async function login(payload) {
-  // TODO: Look up the user, compare the password, and return { user, token } or throw 401.
-  throw Object.assign(new Error("Login service is not implemented yet"), { statusCode: 501 });
+  const { email, password } = payload;
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) {
+    const error = new Error("Invalid email or password");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    const error = new Error("Invalid email or password");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  await normalizeUserRole(user);
+  const token = signToken(user);
+  return { user: serializeUser(user), token };
 }
 
 async function me(userId) {
-  // TODO: Load the user by id and return the serialized profile, or throw 404.
-  throw Object.assign(new Error("Current user service is not implemented yet"), { statusCode: 501 });
+  const user = await User.findById(userId);
+  if (!user) {
+    const error = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  await normalizeUserRole(user);
+  return serializeUser(user);
 }
 
-module.exports = { signup, login, me };
+module.exports = { signup, login, me, signToken, serializeUser, normalizeUserRole };

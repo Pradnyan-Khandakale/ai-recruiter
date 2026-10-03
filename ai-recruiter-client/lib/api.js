@@ -1,8 +1,15 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 function getToken() {
-  // TODO: Read the saved token from localStorage or the recruitment_token cookie.
-  return "";
+  if (typeof window === "undefined") {
+    return "";
+  }
+  const fromStorage = localStorage.getItem("recruitment_token");
+  if (fromStorage) {
+    return fromStorage;
+  }
+  const match = document.cookie.match(/(?:^|;\s*)recruitment_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
 }
 
 export class ApiError extends Error {
@@ -15,10 +22,41 @@ export class ApiError extends Error {
 }
 
 async function request(path, options = {}) {
-  // TODO: Attach the JSON content type (except for FormData) and the bearer token, call
-  // TODO: `${API_URL}${path}`, throw an ApiError when the response or payload reports a
-  // TODO: failure, and return payload.data.
-  return null;
+  const headers = {};
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const token = getToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      ...headers,
+      ...(options.headers || {})
+    }
+  });
+
+  let payload = null;
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!response.ok || (payload && payload.success === false)) {
+    const message = payload?.error?.message || `Request failed with status ${response.status}`;
+    const details = payload?.error?.details || null;
+    throw new ApiError(message, response.status, details);
+  }
+
+  return payload ? payload.data : null;
 }
 
 export const api = {

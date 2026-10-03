@@ -1,7 +1,31 @@
 const mongoose = require("mongoose");
 
-// TODO: Define the fields: name, email (unique, lowercase), password,
-// TODO: role ("recruiter" | "admin"), created_at.
-const userSchema = new mongoose.Schema({});
+const userSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  password: {
+    type: String,
+    required: true
+  },
+  role: {
+    type: String,
+    enum: ["recruiter", "admin"],
+    default: "recruiter"
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  }
+});
 
 module.exports = mongoose.model("User", userSchema);

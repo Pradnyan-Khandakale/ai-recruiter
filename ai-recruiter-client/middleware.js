@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
 export function middleware(request) {
-  // TODO: Redirect to /login when a /dashboard route is requested without the
-  // TODO: recruitment_token cookie.
+  const token = request.cookies.get("recruitment_token")?.value;
+  if (!token && request.nextUrl.pathname.startsWith("/dashboard")) {
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
+  }
   return NextResponse.next();
 }
 

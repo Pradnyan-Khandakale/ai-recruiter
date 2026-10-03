@@ -13,11 +13,16 @@ export function Overview() {
   const [error, setError] = useState("");
 
   async function load() {
-    // TODO: Refresh the dashboard through the store and surface any error message.
+    try {
+      setError("");
+      await refreshDashboard();
+    } catch (err) {
+      setError(err?.message || "Failed to load dashboard metrics");
+    }
   }
 
   useEffect(() => {
-    // TODO: Load the dashboard data once when the page mounts.
+    load();
   }, []);
 
   return (

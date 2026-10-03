@@ -1,8 +1,20 @@
 function errorHandler(error, req, res, next) {
-  // TODO: Include error.details in the error payload.
-  res.status(error.statusCode || 500).json({
+  let statusCode = error.statusCode || 500;
+  let message = error.message || "Internal server error";
+
+  // Handle MongoDB duplicate key error (E11000)
+  if (error.code === 11000) {
+    statusCode = 409;
+    const field = Object.keys(error.keyPattern || {})[0] || "field";
+    message = `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`;
+  }
+
+  res.status(statusCode).json({
     success: false,
-    error: { message: error.message || "Internal server error" }
+    error: {
+      message,
+      ...(error.details ? { details: error.details } : {})
+    }
   });
 }
 
