@@ -45,7 +45,7 @@ const jobSchema = z.object({
     .optional()
     .default("full-time"),
   salary_range: z.string().optional(),
-  status: z.enum(["draft", "published", "closed"]).optional().default("published"),
+  status: z.enum(["draft", "published", "closed", "archived"]).optional().default("published"),
   is_published: z.boolean().optional()
 }).passthrough();
 
@@ -70,7 +70,7 @@ const jobUpdateSchema = z.object({
   location: z.string().optional(),
   employment_type: z.enum(["full-time", "part-time", "contract", "internship"]).optional(),
   salary_range: z.string().optional(),
-  status: z.enum(["draft", "published", "closed"]).optional(),
+  status: z.enum(["draft", "published", "closed", "archived"]).optional(),
   is_published: z.boolean().optional()
 }).passthrough();
 

@@ -61,7 +61,7 @@ const jobSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["draft", "published", "closed"],
+    enum: ["draft", "published", "closed", "archived"],
     default: "published",
     index: true
   },
@@ -81,7 +81,7 @@ const jobSchema = new mongoose.Schema({
 
 jobSchema.pre("save", function (next) {
   this.updated_at = new Date();
-  if (this.status === "draft") {
+  if (this.status === "draft" || this.status === "closed" || this.status === "archived") {
     this.is_published = false;
   } else if (this.status === "published") {
     this.is_published = true;

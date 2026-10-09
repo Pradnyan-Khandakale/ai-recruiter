@@ -46,6 +46,8 @@ async function uploadCandidate(payload, file) {
     // Update candidate details with latest submission
     candidate.name = name;
     candidate.phone = phone;
+    // Retain candidate.job_id as legacy field pointing to latest applied job,
+    // but Application remains the authoritative relationship.
     candidate.job_id = job._id;
     candidate.resume_url = resumeUrl;
     await candidate.save();
@@ -84,7 +86,7 @@ async function uploadCandidate(payload, file) {
 }
 
 async function listCandidates(user, options = {}) {
-  let filter = {};
+  let appFilter = {};
 
   if (user.role !== "admin") {
     // Find all jobs owned by this recruiter
@@ -92,6 +94,9 @@ async function listCandidates(user, options = {}) {
     const jobIds = userJobs.map((j) => j._id);
 
     if (options.job_id) {
+      if (!mongoose.Types.ObjectId.isValid(options.job_id)) {
+        throw Object.assign(new Error("Invalid job ID format"), { statusCode: 400 });
+      }
       const isJobOwned = jobIds.some((id) => id.toString() === options.job_id.toString());
       if (!isJobOwned) {
         throw Object.assign(
@@ -99,17 +104,36 @@ async function listCandidates(user, options = {}) {
           { statusCode: 403 }
         );
       }
-      filter = { job_id: options.job_id };
+      appFilter = { job_id: options.job_id };
     } else {
-      filter = { job_id: { $in: jobIds } };
+      appFilter = { $or: [{ job_id: { $in: jobIds } }, { recruiter_id: user.id }] };
     }
   } else if (options.job_id) {
-    filter = { job_id: options.job_id };
+    if (!mongoose.Types.ObjectId.isValid(options.job_id)) {
+      throw Object.assign(new Error("Invalid job ID format"), { statusCode: 400 });
+    }
+    appFilter = { job_id: options.job_id };
   }
 
-  return Candidate.find(filter)
+  // Authoritative candidate listing derived from Application collection
+  const applications = await Application.find(appFilter)
+    .populate("candidate_id")
     .populate("job_id", "title company status created_by")
     .sort({ created_at: -1 });
+
+  return applications
+    .filter((app) => Boolean(app.candidate_id))
+    .map((app) => {
+      const candObj = app.candidate_id.toObject ? app.candidate_id.toObject() : app.candidate_id;
+      return {
+        ...candObj,
+        job_id: app.job_id,
+        status: app.status || candObj.status || "applied",
+        resume_url: app.resume_url || candObj.resume_url,
+        created_at: app.created_at || candObj.created_at,
+        application_id: app._id
+      };
+    });
 }
 
 async function getCandidate(id, user) {
@@ -122,14 +146,21 @@ async function getCandidate(id, user) {
     throw Object.assign(new Error("Candidate not found"), { statusCode: 404 });
   }
 
-  if (user.role !== "admin") {
-    const ownsJob = candidate.job_id && candidate.job_id.created_by?.toString() === user.id;
-    const hasApplication = await Application.exists({
-      candidate_id: candidate._id,
-      recruiter_id: user.id
-    });
+  let appQuery = { candidate_id: candidate._id };
 
-    if (!ownsJob && !hasApplication) {
+  if (user.role !== "admin") {
+    const userJobs = await Job.find({ created_by: user.id }).select("_id");
+    const jobIds = userJobs.map((j) => j._id);
+
+    appQuery = {
+      candidate_id: candidate._id,
+      $or: [{ recruiter_id: user.id }, { job_id: { $in: jobIds } }]
+    };
+
+    const hasApplication = await Application.exists(appQuery);
+    const ownsLegacyJob = candidate.job_id && candidate.job_id.created_by?.toString() === user.id;
+
+    if (!hasApplication && !ownsLegacyJob) {
       throw Object.assign(
         new Error("Forbidden: You do not have permission to view this candidate"),
         { statusCode: 403 }
@@ -137,12 +168,24 @@ async function getCandidate(id, user) {
     }
   }
 
-  const applications = await Application.find({ candidate_id: candidate._id })
+  // Strictly isolate applications: recruiters only see applications for their own jobs
+  const applications = await Application.find(appQuery)
     .populate("job_id", "title company status")
     .sort({ created_at: -1 });
 
+  const candObj = candidate.toObject();
+
+  // If user is not admin, ensure candidate.job_id does not leak another recruiter's job
+  if (user.role !== "admin" && candObj.job_id && candObj.job_id.created_by?.toString() !== user.id) {
+    if (applications.length > 0) {
+      candObj.job_id = applications[0].job_id;
+    } else {
+      candObj.job_id = null;
+    }
+  }
+
   return {
-    ...candidate.toObject(),
+    ...candObj,
     applications
   };
 }
@@ -166,6 +209,7 @@ async function listApplications(jobId, user) {
 
   return Application.find({ job_id: jobId })
     .populate("candidate_id")
+    .populate("job_id", "title company status")
     .sort({ created_at: -1 });
 }
 

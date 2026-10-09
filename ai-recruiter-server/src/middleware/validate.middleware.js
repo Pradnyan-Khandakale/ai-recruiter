@@ -3,13 +3,10 @@ function validate(schema, source = "body") {
     const result = schema.safeParse(req[source]);
     if (!result.success) {
       const details = result.error.flatten().fieldErrors;
-      return res.status(400).json({
-        success: false,
-        error: {
-          message: "Validation failed",
-          details
-        }
-      });
+      const error = new Error("Validation failed");
+      error.statusCode = 400;
+      error.details = details;
+      return next(error);
     }
     req[source] = result.data;
     return next();

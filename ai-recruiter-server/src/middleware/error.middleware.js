@@ -1,4 +1,32 @@
-function errorHandler(error, req, res, next) {
+const fs = require("fs");
+
+async function errorHandler(error, req, res, next) {
+  // Clean up rejected uploads written to disk during this request
+  if (req.file && req.file.path) {
+    try {
+      await fs.promises.unlink(req.file.path);
+    } catch (cleanupErr) {
+      if (cleanupErr.code !== "ENOENT") {
+        console.error("Failed to clean up uploaded file:", cleanupErr);
+      }
+    }
+  } else if (req.files) {
+    const filesToClean = Array.isArray(req.files)
+      ? req.files
+      : Object.values(req.files).flat();
+    for (const file of filesToClean) {
+      if (file && file.path) {
+        try {
+          await fs.promises.unlink(file.path);
+        } catch (cleanupErr) {
+          if (cleanupErr.code !== "ENOENT") {
+            console.error("Failed to clean up uploaded file:", cleanupErr);
+          }
+        }
+      }
+    }
+  }
+
   let statusCode = error.statusCode || 500;
   let message = error.message || "Internal server error";
 

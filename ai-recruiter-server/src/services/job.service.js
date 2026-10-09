@@ -45,9 +45,14 @@ async function listJobs(options = {}, user = null) {
   if (user && !options.public) {
     // Authenticated recruiter: see their own jobs by default
     filter.created_by = user.id;
+    // Exclude archived jobs by default unless explicitly requested
+    if (!options.status && options.include_archived !== "true") {
+      filter.status = { $ne: "archived" };
+    }
   } else {
     // Public / unauthenticated: only published jobs
     filter.status = "published";
+    filter.is_published = true;
   }
 
   if (options.status) {
@@ -71,7 +76,7 @@ async function getJob(id, user = null) {
   const isOwner = user && (job.created_by.toString() === user.id || user.role === "admin");
 
   if (!isOwner && job.status !== "published") {
-    // Do not reveal private / draft jobs to unauthorized users
+    // Do not reveal private / draft / archived jobs to unauthorized users
     throw Object.assign(new Error("Job not found"), { statusCode: 404 });
   }
 
@@ -93,6 +98,10 @@ async function updateJob(id, payload, user) {
     throw Object.assign(new Error("Forbidden: You do not have permission to modify this job"), {
       statusCode: 403
     });
+  }
+
+  if (job.status === "archived") {
+    throw Object.assign(new Error("Archived jobs cannot be modified"), { statusCode: 400 });
   }
 
   const allowedFields = [
@@ -117,7 +126,7 @@ async function updateJob(id, payload, user) {
     }
   }
 
-  if (payload.status === "draft") {
+  if (payload.status === "draft" || payload.status === "closed" || payload.status === "archived") {
     job.is_published = false;
   } else if (payload.status === "published") {
     job.is_published = true;
@@ -143,8 +152,12 @@ async function deleteJob(id, user) {
     });
   }
 
-  await Job.deleteOne({ _id: id });
-  return { deleted: true, id };
+  // Safe soft delete/archival preserves historical applications while hiding the position
+  job.status = "archived";
+  job.is_published = false;
+  await job.save();
+
+  return { deleted: true, status: "archived", id };
 }
 
 module.exports = { createJob, listJobs, getJob, updateJob, deleteJob };

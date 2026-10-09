@@ -15,17 +15,37 @@ export function CandidatesList() {
   const searchParams = useSearchParams();
   const filterJobId = searchParams.get("jobId");
 
-  const [candidates, setCandidates] = useState([]);
+  const [items, setItems] = useState([]);
+  const [jobTitle, setJobTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function loadCandidates() {
+  async function loadData() {
     try {
       setLoading(true);
       setError("");
-      const params = filterJobId ? { jobId: filterJobId } : undefined;
-      const data = await api.listCandidates(params);
-      setCandidates(Array.isArray(data) ? data : []);
+
+      if (filterJobId) {
+        // Fetch dedicated job applications using the applications endpoint
+        const apps = await api.listJobApplications(filterJobId);
+        const appList = Array.isArray(apps) ? apps : [];
+        setItems(appList);
+
+        if (appList.length > 0 && appList[0]?.job_id?.title) {
+          setJobTitle(appList[0].job_id.title);
+        } else {
+          try {
+            const job = await api.getJob(filterJobId);
+            if (job?.title) setJobTitle(job.title);
+          } catch {
+            setJobTitle("");
+          }
+        }
+      } else {
+        setJobTitle("");
+        const candidates = await api.listCandidates();
+        setItems(Array.isArray(candidates) ? candidates : []);
+      }
     } catch (err) {
       setError(err?.message || "Failed to load candidates");
     } finally {
@@ -34,13 +54,10 @@ export function CandidatesList() {
   }
 
   useEffect(() => {
-    loadCandidates();
+    loadData();
   }, [filterJobId]);
 
-  const filteredJobTitle =
-    filterJobId && candidates.length > 0
-      ? candidates[0]?.job_id?.title
-      : null;
+  const activeJobTitle = jobTitle || (filterJobId && items.length > 0 ? items[0]?.job_id?.title : null);
 
   return (
     <div className="space-y-6">
@@ -67,7 +84,7 @@ export function CandidatesList() {
           <Filter size={16} className="text-teal-700" />
           <span>
             Filtering applications for:{" "}
-            <strong className="font-semibold">{filteredJobTitle || filterJobId}</strong>
+            <strong className="font-semibold">{activeJobTitle || filterJobId}</strong>
           </span>
         </div>
       )}
@@ -80,11 +97,11 @@ export function CandidatesList() {
 
       {loading && (
         <div className="flex items-center justify-center p-12 text-slate-500">
-          Loading candidates...
+          Loading {filterJobId ? "applications" : "candidates"}...
         </div>
       )}
 
-      {!loading && candidates.length === 0 && (
+      {!loading && items.length === 0 && (
         <Card className="flex flex-col items-center justify-center p-12 text-center">
           <Users className="mb-3 text-slate-400" size={40} />
           <h3 className="text-lg font-bold text-slate-800">No applications received yet</h3>
@@ -103,42 +120,54 @@ export function CandidatesList() {
       )}
 
       <div className="grid gap-4">
-        {candidates.map((candidate) => {
-          const resumeLink = candidate.resume_url
-            ? `${API_BASE}${candidate.resume_url}`
+        {items.map((item, idx) => {
+          const isAppRecord = Boolean(item.candidate_id || item.submitted_information);
+          const candidateName = isAppRecord
+            ? item.candidate_id?.name || item.submitted_information?.name || "Applicant"
+            : item.name;
+          const candidateEmail = isAppRecord
+            ? item.candidate_id?.email || item.submitted_information?.email
+            : item.email;
+          const candidatePhone = isAppRecord
+            ? item.candidate_id?.phone || item.submitted_information?.phone
+            : item.phone;
+          const resumeLink = item.resume_url
+            ? `${API_BASE}${item.resume_url}`
             : null;
+          const jobTitleText = item.job_id?.title || (typeof item.job_id === "string" ? item.job_id : null);
+          const itemKey = item._id ? item._id.toString() : (item.application_id || `item-${idx}`);
 
           return (
             <Card
-              key={candidate._id}
+              key={itemKey}
               className="border-slate-200 p-5 shadow-sm transition hover:shadow-md"
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-bold text-slate-900">{candidate.name}</h2>
+                    <h2 className="text-lg font-bold text-slate-900">{candidateName}</h2>
                     <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 uppercase text-[10px] tracking-wider">
-                      {candidate.status || "applied"}
+                      {item.status || "applied"}
                     </Badge>
                   </div>
 
                   <p className="text-sm text-slate-600">
-                    <span className="font-medium text-slate-800">{candidate.email}</span> •{" "}
-                    <span>{candidate.phone}</span>
+                    <span className="font-medium text-slate-800">{candidateEmail}</span>
+                    {candidatePhone && <span> • {candidatePhone}</span>}
                   </p>
 
-                  {candidate.job_id && (
+                  {jobTitleText && (
                     <p className="text-xs font-medium text-teal-700">
                       Applied for:{" "}
                       <span className="font-semibold text-slate-800">
-                        {candidate.job_id.title}
+                        {jobTitleText}
                       </span>
                     </p>
                   )}
 
-                  {candidate.created_at && (
+                  {item.created_at && (
                     <p className="text-xs text-slate-400">
-                      Submitted on: {new Date(candidate.created_at).toLocaleDateString()}
+                      Submitted on: {new Date(item.created_at).toLocaleDateString()}
                     </p>
                   )}
                 </div>
