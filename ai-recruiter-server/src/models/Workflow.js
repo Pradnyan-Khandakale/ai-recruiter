@@ -44,6 +44,7 @@ const workflowSchema = new mongoose.Schema({
 });
 
 workflowSchema.index({ candidate_id: 1, job_id: 1 });
+workflowSchema.index({ job_id: 1, status: 1 });
 
 workflowSchema.pre("save", function setUpdatedAt(next) {
   this.updated_at = new Date();

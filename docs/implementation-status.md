@@ -25,12 +25,12 @@
 - [x] Phase 3.4: Shortlisting agent (`src/agents/shortlisting.agent.js`, `src/agents/matching.agent.js`).
 - [x] Phase 3.5: Workflow orchestration, state persistence & human approval (`src/workflows/hiringWorkflow.service.js`, `src/models/Workflow.js`, `src/models/WorkflowLog.js`, `src/controllers/workflow.controller.js`).
 - [x] Phase 3.6: Provider configuration, fallback handling, and mock resiliency.
-- [x] Production Readiness Audit: Resume upload magic-byte verification (`%PDF-`).
-- [x] Production Readiness Audit: Vector dimension alignment to 384 (`BAAI/bge-small-en-v1.5`).
-- [x] Production Readiness Audit: RAG vector retrieval tenant isolation (`recruiter_id`, `job_id`).
-- [x] Production Readiness Audit: Workflow API tenant isolation (403 on cross-recruiter view/approve/retry).
-- [x] Production Readiness Audit: Workflow idempotency & invalid transition protection.
-- [x] Production Readiness Audit: Frontend workflow monitor and React Flow execution graph (`features/workflows/`).
+- [x] Phase 4A: Recruiter analytics service with tenant-isolated MongoDB aggregations (`src/services/analytics.service.js`, `src/controllers/analytics.controller.js`, `src/validators/analytics.validators.js`, `tests/analytics.test.js`).
+- [x] Phase 4A: Analytics dashboard frontend connected to live backend with job filtering, status distribution, and agent telemetry (`features/analytics/AnalyticsPage.js`).
+- [x] Phase 4B: Workflow dashboard experience improvements: accessible inline alert banners, candidate context badges, safe error displays (`features/workflows/WorkflowsPage.js`).
+- [x] Phase 4C: Candidate & application lifecycle validation, duplicate checks, magic-byte PDF verification, and clean file error handling.
+- [x] Phase 4D: Health and dependency readiness probes (`/health`, `/health/ready`, `tests/health.test.js`), `.env.example` documentation, and fallback observability.
+- [x] Phase 4E: Operational and security hardening: compound DB indexes on `Job`, `Application`, `Workflow`, cross-tenant 403 isolation, and sanitized error envelopes.
 - [x] Final Verification: Real Hugging Face embedding provider with timeout, 503 retries, 2D array unwrap, L2 normalization, and strict degradation guard.
 - [x] Final Verification: Strict persistence failure guard in Qdrant integration (`REQUIRE_PERSISTENT_STORAGE`).
 - [x] Final Verification: Mocked Resend provider delivery, quota errors, and template interpolation.
@@ -39,10 +39,10 @@
 
 ---
 
-## 3. Current Test Results (Post-Final Integration Verification)
+## 3. Current Test Results (Post-Phase 4 Implementation)
 
-- **Total Test Suites**: 6 Passed, 0 Failed, 6 Total
-- **Total Tests**: 76 Passed, 0 Failed, 76 Total
+- **Total Test Suites**: 8 Passed, 0 Failed, 8 Total
+- **Total Tests**: 87 Passed, 0 Failed, 87 Total
 - **Frontend Production Build**: 13/13 routes compiled cleanly, 0 errors
 - **Snapshots**: 0
 - **Status**: ALL PASSING
@@ -56,6 +56,8 @@
 | `tests/agent.test.js` | 9 / 9 | PASS | Phase 3.2-3.4 AI agents (Parser, Embedding, Matching, Shortlist, Interview, Email) |
 | `tests/workflow.test.js` | 7 / 7 | PASS | Phase 3.5 Workflow orchestration, tenant isolation & E2E lifecycle |
 | `tests/integrations.test.js` | 11 / 11 | PASS | Provider mocks, Qdrant strict mode, Resend, and Process Restart Recovery |
+| `tests/analytics.test.js` | 7 / 7 | PASS | Phase 4A Recruiter analytics aggregation, tenant isolation & filtering |
+| `tests/health.test.js` | 4 / 4 | PASS | Phase 4D Health liveness & readiness probes |
 
 ---
 
@@ -63,9 +65,10 @@
 
 | Service / Provider | Mode | Status | Notes |
 |---|---|---|---|
-| MongoDB | Local Service (Port 27017) | VERIFIED | Process `mongod` active; DB operations and restart persistence verified |
+| MongoDB | Local Service (Port 27017) | VERIFIED | Process `mongod` active; DB operations, indexes, and restart persistence verified |
 | Qdrant Vector DB | In-Memory Fallback | NOT VERIFIED (Live Service) | Port 6333 offline; fallback active (`isPersistent: false`, 384-dim); strict mode guard verified |
 | Resend Email API | Fallback Simulated Mode | NOT VERIFIED (Live Service) | API key unconfigured; fallback mode cleanly formats & logs email without sending; provider mock verified |
 | HuggingFace Embeddings | In-Memory Fallback | NOT VERIFIED (Live Service) | API key unconfigured; 384-dim normalized vector fallback active; provider mock & retries verified |
 | Frontend React App | Next.js 15.5.18 Build | VERIFIED | `next build` generates 13 static/dynamic routes with zero errors |
+| Health & Readiness API | Live HTTP Endpoints | VERIFIED | `/health` (200 OK) and `/health/ready` (checks DB + storage mode) |
 | Browser End-to-End | Browser Subagent | VERIFIED | Login, job creation, and workflow graph rendered in live browser session |

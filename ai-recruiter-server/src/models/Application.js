@@ -60,5 +60,6 @@ applicationSchema.pre("save", function (next) {
 applicationSchema.index({ job_id: 1, candidate_id: 1 }, { unique: true });
 applicationSchema.index({ recruiter_id: 1, created_at: -1 });
 applicationSchema.index({ job_id: 1, created_at: -1 });
+applicationSchema.index({ job_id: 1, status: 1 });
 
 module.exports = mongoose.model("Application", applicationSchema);

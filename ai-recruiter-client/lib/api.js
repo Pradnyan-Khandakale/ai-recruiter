@@ -78,5 +78,15 @@ export const api = {
     method: "POST",
     body: JSON.stringify({ workflow_id })
   }),
-  analytics: () => request("/analytics")
+  analytics: (params) => {
+    if (!params) return request("/analytics");
+    const searchParams = new URLSearchParams();
+    for (const [key, val] of Object.entries(params)) {
+      if (val !== undefined && val !== null && val !== "") {
+        searchParams.set(key, String(val));
+      }
+    }
+    const qs = searchParams.toString();
+    return request(qs ? `/analytics?${qs}` : "/analytics");
+  }
 };
