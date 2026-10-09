@@ -11,7 +11,7 @@ import {
   Users,
   Edit,
   Eye,
-  Trash2,
+  Archive,
   Globe
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -67,13 +67,18 @@ export function JobsList() {
     }
   }
 
-  async function handleDelete(jobId) {
-    if (!confirm("Are you sure you want to delete this job?")) return;
+  async function handleArchive(jobId) {
+    if (
+      !confirm(
+        "Are you sure you want to archive this job? Historical applications will be preserved, but the position will no longer accept new applicants."
+      )
+    )
+      return;
     try {
-      await api.deleteJob(jobId);
+      await api.archiveJob(jobId);
       setJobs((prev) => prev.filter((j) => j._id !== jobId));
     } catch (err) {
-      alert(err?.message || "Failed to delete job");
+      alert(err?.message || "Failed to archive job");
     }
   }
 
@@ -234,11 +239,11 @@ export function JobsList() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleDelete(job._id)}
-                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                  title="Delete Job"
+                  onClick={() => handleArchive(job._id)}
+                  className="text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                  title="Archive Job"
                 >
-                  <Trash2 size={15} />
+                  <Archive size={15} />
                 </Button>
               </div>
             </div>

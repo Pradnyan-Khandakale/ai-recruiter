@@ -1,3 +1,4 @@
+const fs = require("fs");
 const mongoose = require("mongoose");
 const Candidate = require("../models/Candidate");
 const Application = require("../models/Application");
@@ -6,6 +7,22 @@ const Job = require("../models/Job");
 async function uploadCandidate(payload, file) {
   if (!file) {
     throw Object.assign(new Error("Resume PDF file is required"), { statusCode: 400 });
+  }
+
+  // Deep inspection: validate PDF magic bytes (%PDF-) rather than trusting client MIME type or extension alone
+  if (file.path) {
+    try {
+      const buffer = Buffer.alloc(5);
+      const fd = await fs.promises.open(file.path, "r");
+      await fd.read(buffer, 0, 5, 0);
+      await fd.close();
+      if (buffer.toString("utf-8") !== "%PDF-") {
+        throw Object.assign(new Error("File content is not a valid PDF: missing %PDF- header"), { statusCode: 400 });
+      }
+    } catch (err) {
+      if (err.statusCode) throw err;
+      throw Object.assign(new Error("Failed to validate uploaded PDF structure"), { statusCode: 400 });
+    }
   }
 
   if (!payload.job_id || !mongoose.Types.ObjectId.isValid(payload.job_id)) {
@@ -78,9 +95,19 @@ async function uploadCandidate(payload, file) {
     }
   });
 
+  // Automatically start workflow in background upon resume upload
+  let workflow = null;
+  try {
+    const workflowService = require("../workflows/hiringWorkflow.service");
+    workflow = await workflowService.startWorkflow(candidate._id, job._id);
+  } catch (err) {
+    console.error("Auto-start workflow failed during upload:", err.message);
+  }
+
   return {
     candidate,
     application,
+    workflow,
     message: "Application submitted successfully"
   };
 }

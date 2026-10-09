@@ -4,8 +4,19 @@ const path = require("path");
 const logDir = path.join(__dirname, "..", "..", "logs");
 
 function appendWorkflowFailure(entry) {
-  // TODO: Create the logs directory and append the timestamped JSON entry to
-  // TODO: logs/workflow-failures.log.
+  try {
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    const logPath = path.join(logDir, "workflow-failures.log");
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ...entry
+    };
+    fs.appendFileSync(logPath, JSON.stringify(payload) + "\n", "utf-8");
+  } catch (err) {
+    console.error("Failed to append workflow failure log:", err.message);
+  }
 }
 
 module.exports = { appendWorkflowFailure };

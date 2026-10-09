@@ -2,28 +2,28 @@ const workflowService = require("../workflows/hiringWorkflow.service");
 const { sendSuccess } = require("../utils/response");
 
 async function startWorkflow(req, res) {
-  // TODO: Start the hiring workflow for the candidate and job in req.body, respond with 201.
-  return res.status(501).json({ success: false, error: { message: "Start workflow is not implemented yet" } });
+  const result = await workflowService.startWorkflow(req.body.candidate_id, req.body.job_id, req.user);
+  return sendSuccess(res, result, 201);
 }
 
 async function retryWorkflow(req, res) {
-  // TODO: Retry the failed workflow in req.body.workflow_id.
-  return res.status(501).json({ success: false, error: { message: "Retry workflow is not implemented yet" } });
+  const result = await workflowService.retryWorkflow(req.body.workflow_id, req.user);
+  return sendSuccess(res, result, 200);
 }
 
 async function approveWorkflow(req, res) {
-  // TODO: Record the human approval decision and resume the workflow.
-  return res.status(501).json({ success: false, error: { message: "Approve workflow is not implemented yet" } });
+  const result = await workflowService.approveWorkflow(req.body.workflow_id, req.body.approved, req.user);
+  return sendSuccess(res, result, 200);
 }
 
 async function getWorkflow(req, res) {
-  // TODO: Respond with the workflow, its logs, and the node state spec.
-  return res.status(501).json({ success: false, error: { message: "Get workflow is not implemented yet" } });
+  const result = await workflowService.getWorkflow(req.params.id, req.user);
+  return sendSuccess(res, result, 200);
 }
 
 async function listWorkflows(req, res) {
-  // TODO: Respond with every workflow plus its logs and execution order.
-  return res.status(501).json({ success: false, error: { message: "List workflows is not implemented yet" } });
+  const result = await workflowService.listWorkflows(req.user);
+  return sendSuccess(res, result, 200);
 }
 
 module.exports = { startWorkflow, retryWorkflow, approveWorkflow, getWorkflow, listWorkflows };

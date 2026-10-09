@@ -1,12 +1,17 @@
 const { z } = require("zod");
 
-// TODO: Require candidate_id and job_id.
-const startWorkflowSchema = z.object({}).passthrough();
+const startWorkflowSchema = z.object({
+  candidate_id: z.string().min(1, "Candidate ID is required"),
+  job_id: z.string().min(1, "Job ID is required")
+});
 
-// TODO: Require workflow_id.
-const retryWorkflowSchema = z.object({}).passthrough();
+const retryWorkflowSchema = z.object({
+  workflow_id: z.string().min(1, "Workflow ID is required")
+});
 
-// TODO: Require workflow_id and an approved boolean defaulting to true.
-const approveWorkflowSchema = z.object({}).passthrough();
+const approveWorkflowSchema = z.object({
+  workflow_id: z.string().min(1, "Workflow ID is required"),
+  approved: z.boolean().default(true)
+});
 
 module.exports = { startWorkflowSchema, retryWorkflowSchema, approveWorkflowSchema };

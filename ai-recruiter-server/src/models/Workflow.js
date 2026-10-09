@@ -1,12 +1,52 @@
 const mongoose = require("mongoose");
 
-// TODO: Define the fields: candidate_id, job_id, current_state, status ("pending" |
-// TODO: "running" | "waiting_approval" | "completed" | "failed"), state, retries
-// TODO: (Map of Number), created_at, updated_at.
-const workflowSchema = new mongoose.Schema({});
+const workflowSchema = new mongoose.Schema({
+  candidate_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Candidate",
+    required: true
+  },
+  job_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Job",
+    required: true
+  },
+  application_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Application"
+  },
+  current_state: {
+    type: String,
+    default: "resume_parser"
+  },
+  status: {
+    type: String,
+    enum: ["pending", "running", "waiting_approval", "completed", "failed"],
+    default: "pending"
+  },
+  state: {
+    type: mongoose.Schema.Types.Mixed,
+    default: () => ({})
+  },
+  retries: {
+    type: Map,
+    of: Number,
+    default: () => new Map()
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  },
+  updated_at: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+workflowSchema.index({ candidate_id: 1, job_id: 1 });
 
 workflowSchema.pre("save", function setUpdatedAt(next) {
-  // TODO: Refresh updated_at before every save.
+  this.updated_at = new Date();
   next();
 });
 

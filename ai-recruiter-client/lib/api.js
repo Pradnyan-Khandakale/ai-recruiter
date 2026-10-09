@@ -61,6 +61,7 @@ export const api = {
   getJob: (id) => request(`/jobs/${id}`),
   updateJob: (id, payload) => request(`/jobs/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteJob: (id) => request(`/jobs/${id}`, { method: "DELETE" }),
+  archiveJob: (id) => request(`/jobs/${id}`, { method: "DELETE" }),
   listCandidates: (params) => {
     const jobId = params?.job_id || params?.jobId;
     return request(jobId ? `/candidates?job_id=${jobId}` : "/candidates");
