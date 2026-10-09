@@ -138,7 +138,7 @@ Embedding Model:
 - BAAI/bge-small-en-v1.5
 
 LLM Provider:
-- Groq API Free Tier
+- Google Gemini API
 
 Fallback LLM:
 - OpenRouter Free Models
@@ -1072,7 +1072,8 @@ MONGODB_URI=
 
 JWT_SECRET=
 
-GROQ_API_KEY=
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
 
 OPENROUTER_API_KEY=
 

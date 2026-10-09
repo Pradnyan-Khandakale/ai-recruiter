@@ -1,7 +1,13 @@
+const { z } = require("zod");
+const geminiService = require("../services/gemini.service");
 const { loadShortlistingRules } = require("../utils/specLoader");
 const { chooseDecision } = require("../utils/score");
 
-async function runShortlistingAgent({ matching, candidate, job }) {
+const RationaleSchema = z.object({
+  rationale: z.string().min(10)
+});
+
+async function runShortlistingAgent({ matching, candidate, job, options = {} }) {
   const rules = loadShortlistingRules();
   const rawScore = matching?.data?.match_score;
   const match_score = typeof rawScore === "number" ? rawScore : Number(rawScore || 0);
@@ -16,10 +22,43 @@ async function runShortlistingAgent({ matching, candidate, job }) {
   const status = decision.status || "hold";
   const recommendation = decision.recommendation || "Hold for review";
 
-  const rationale = `Candidate achieved a match score of ${match_score}. Decision based on evaluation policy: ${recommendation}. Missing required skills: ${missing_skills.length > 0 ? missing_skills.join(", ") : "None"}.`;
+  let rationale = `Candidate achieved a match score of ${match_score}. Decision based on evaluation policy: ${recommendation}. Missing required skills: ${missing_skills.length > 0 ? missing_skills.join(", ") : "None"}.`;
+  let provider = "rules";
+
+  const isStrict = Boolean(options.strict || process.env.REQUIRE_GEMINI === "true");
+  try {
+    const prompt = `Candidate shortlisting decision:
+Role: ${job?.title || "Role"}.
+Match Score: ${match_score}/100.
+Decision: ${status} (${recommendation}).
+Missing Skills: ${missing_skills.join(", ") || "None"}.
+Generate a clear, professional 2-3 sentence hiring rationale for this shortlisting decision.`;
+
+    const geminiRes = await geminiService.generateStructuredJson({
+      prompt,
+      systemInstruction: "You are an executive hiring decision reviewer. Produce a structured JSON object with a professional rationale adhering to schema.",
+      schema: RationaleSchema,
+      strict: isStrict
+    });
+
+    if (geminiRes.success && geminiRes.data?.rationale) {
+      rationale = geminiRes.data.rationale;
+      provider = "gemini";
+    } else if (isStrict) {
+      throw new Error(geminiRes.error || "Gemini shortlisting rationale failed");
+    }
+  } catch (err) {
+    if (isStrict) {
+      return {
+        success: false,
+        error: `Strict Gemini shortlisting failed: ${err.message}`
+      };
+    }
+  }
 
   return {
     success: true,
+    provider,
     data: {
       status,
       recommendation,

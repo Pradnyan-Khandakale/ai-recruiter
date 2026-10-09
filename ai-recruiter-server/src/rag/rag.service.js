@@ -8,8 +8,16 @@ const {
   EMBEDDING_DIMENSIONS
 } = require("./embedding.service");
 
+const crypto = require("crypto");
 const memoryStore = [];
 const vectorSize = EMBEDDING_DIMENSIONS; // 384 dimensions for BAAI/bge-small-en-v1.5
+
+function stringToUuid(str) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(str)) return str;
+  const hash = crypto.createHash("md5").update(String(str)).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
 
 function qdrantHeaders() {
   const headers = { "Content-Type": "application/json" };
@@ -19,11 +27,29 @@ function qdrantHeaders() {
   return headers;
 }
 
+async function ensurePayloadIndexes() {
+  const fields = ["metadata.recruiter_id", "metadata.job_id", "documentId"];
+  for (const field of fields) {
+    try {
+      await fetch(`${env.qdrantUrl}/collections/${env.qdrantCollection}/index`, {
+        method: "PUT",
+        headers: qdrantHeaders(),
+        body: JSON.stringify({ field_name: field, field_schema: "keyword" })
+      });
+    } catch {
+      // Offline or network error handled gracefully
+    }
+  }
+}
+
 async function ensureCollection() {
   const collectionUrl = `${env.qdrantUrl}/collections/${env.qdrantCollection}`;
   try {
     const res = await fetch(collectionUrl, { headers: qdrantHeaders() });
-    if (res.ok) return true;
+    if (res.ok) {
+      await ensurePayloadIndexes().catch(() => {});
+      return true;
+    }
     if (res.status === 404) {
       const createRes = await fetch(collectionUrl, {
         method: "PUT",
@@ -35,7 +61,11 @@ async function ensureCollection() {
           }
         })
       });
-      return createRes.ok;
+      if (createRes.ok) {
+        await ensurePayloadIndexes().catch(() => {});
+        return true;
+      }
+      return false;
     }
   } catch {
     return false;
@@ -67,10 +97,11 @@ async function storeDocument({ id, type, text, metadata = {}, options = {} }) {
     detectedProvider = embResult.provider;
     detectedModel = embResult.model;
     points.push({
-      id: `${id || "doc"}_${index}`,
+      id: stringToUuid(`${id || "doc"}_${index}`),
       vector: embResult.vector,
       payload: {
         documentId: id,
+        rawId: `${id || "doc"}_${index}`,
         type,
         chunkIndex: index,
         chunkText: chunk,
@@ -232,7 +263,11 @@ async function searchContext(query, filter = {}, options = {}) {
 
 async function deleteDocument(id) {
   for (let i = memoryStore.length - 1; i >= 0; i--) {
-    if (memoryStore[i].payload?.documentId === id || memoryStore[i].id.startsWith(`${id}_`)) {
+    if (
+      memoryStore[i].payload?.documentId === id ||
+      memoryStore[i].id.startsWith(`${id}_`) ||
+      memoryStore[i].payload?.rawId?.startsWith(`${id}_`)
+    ) {
       memoryStore.splice(i, 1);
     }
   }
@@ -253,12 +288,144 @@ async function deleteDocument(id) {
   }
 }
 
+async function validateQdrantConnection(options = {}) {
+  const qdrantUrl = options.qdrantUrl || env.qdrantUrl;
+  const apiKey = options.apiKey !== undefined ? options.apiKey : env.qdrantApiKey;
+  const collectionName = options.collection || env.qdrantCollection;
+
+  if (!qdrantUrl) {
+    return {
+      ok: false,
+      status: "FAIL — CONFIGURATION",
+      code: "MISSING_ENDPOINT",
+      message: "QDRANT_URL is not configured."
+    };
+  }
+
+  // Cloud hosted verification
+  const isCloudHost = qdrantUrl.includes(".qdrant.io") || qdrantUrl.includes("cloud.qdrant");
+  const usesHttps = qdrantUrl.startsWith("https://");
+  if (isCloudHost && !usesHttps) {
+    return {
+      ok: false,
+      status: "FAIL — CONFIGURATION",
+      code: "INSECURE_CLOUD_ENDPOINT",
+      message: "Hosted Qdrant Cloud deployment must use HTTPS."
+    };
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  if (apiKey) {
+    headers["api-key"] = apiKey;
+  }
+
+  const startTime = Date.now();
+  try {
+    const collectionsRes = await fetch(`${qdrantUrl}/collections`, { headers });
+    const latencyMs = Date.now() - startTime;
+
+    if (collectionsRes.status === 401 || collectionsRes.status === 403) {
+      return {
+        ok: false,
+        status: "FAIL — AUTHENTICATION",
+        code: "UNAUTHORIZED",
+        latencyMs,
+        message: `Qdrant rejected credentials (HTTP ${collectionsRes.status})`
+      };
+    }
+
+    if (!collectionsRes.ok) {
+      return {
+        ok: false,
+        status: "FAIL — CONNECTIVITY",
+        code: "HTTP_ERROR",
+        latencyMs,
+        message: `Qdrant returned HTTP ${collectionsRes.status}`
+      };
+    }
+
+    const collectionsBody = await collectionsRes.json().catch(() => ({}));
+    const collectionsList = collectionsBody?.result?.collections || [];
+    const collectionExists = collectionsList.some((c) => c.name === collectionName);
+
+    if (!collectionExists) {
+      return {
+        ok: false,
+        status: "PARTIAL",
+        code: "COLLECTION_NOT_FOUND",
+        latencyMs,
+        collection: collectionName,
+        message: `Authentication succeeded, but collection '${collectionName}' does not exist.`
+      };
+    }
+
+    const collDetailRes = await fetch(`${qdrantUrl}/collections/${collectionName}`, { headers });
+    if (!collDetailRes.ok) {
+      return {
+        ok: false,
+        status: "PARTIAL",
+        code: "COLLECTION_INSPECT_ERROR",
+        latencyMs,
+        message: `Collection '${collectionName}' exists, but inspection returned HTTP ${collDetailRes.status}`
+      };
+    }
+
+    const collDetail = await collDetailRes.json().catch(() => ({}));
+    const vectorConfig = collDetail?.result?.config?.params?.vectors || {};
+    const size = typeof vectorConfig === "object" ? (vectorConfig.size || 0) : 0;
+    const distance = typeof vectorConfig === "object" ? (vectorConfig.distance || "Unknown") : "Unknown";
+
+    const dimensionsMatch = size === vectorSize;
+    const distanceMatch = String(distance).toLowerCase() === "cosine";
+
+    if (!dimensionsMatch || !distanceMatch) {
+      return {
+        ok: false,
+        status: "PARTIAL",
+        code: "INCOMPATIBLE_VECTOR_CONFIG",
+        latencyMs,
+        collection: collectionName,
+        expectedDimensions: vectorSize,
+        actualDimensions: size,
+        expectedDistance: "Cosine",
+        actualDistance: distance,
+        message: `Collection vector config mismatch: size=${size} (expected ${vectorSize}), distance=${distance} (expected Cosine)`
+      };
+    }
+
+    return {
+      ok: true,
+      status: "PASS",
+      latencyMs,
+      endpoint: isCloudHost ? "Qdrant Cloud (HTTPS)" : qdrantUrl,
+      collection: collectionName,
+      vectorDimensions: size,
+      distanceMetric: distance,
+      indexedVectors: collDetail?.result?.indexed_vectors_count ?? 0,
+      pointsCount: collDetail?.result?.points_count ?? 0,
+      message: `Qdrant authenticated successfully. Collection '${collectionName}' verified (dim: ${size}, metric: ${distance}).`
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - startTime;
+    const msg = err.message || String(err);
+    return {
+      ok: false,
+      status: "FAIL — CONNECTIVITY",
+      code: "NETWORK_ERROR",
+      latencyMs,
+      message: `Failed to connect to Qdrant at ${qdrantUrl}: ${msg}`
+    };
+  }
+}
+
 module.exports = {
   storeDocument,
   searchContext,
   chunkDocument,
   ensureCollection,
   deleteDocument,
+  validateQdrantConnection,
+  stringToUuid,
   memoryStore,
   vectorSize,
   EMBEDDING_MODEL

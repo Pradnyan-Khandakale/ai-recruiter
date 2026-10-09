@@ -36,13 +36,17 @@
 - [x] Final Verification: Mocked Resend provider delivery, quota errors, and template interpolation.
 - [x] Final Verification: Process restart recovery proving checkpoint persistence across complete server shutdowns.
 - [x] Final Verification: Live browser end-to-end recruitment lifecycle (login, job creation, and workflow monitoring).
+- [x] Provider Migration (Groq -> Gemini): Replaced Groq references with official Google Gen AI SDK (`@google/genai`). Added `GEMINI_API_KEY`, `GEMINI_MODEL`, and `GEMINI_THINKING_BUDGET`.
+- [x] Agent Intelligence Enhancement: Integrated Gemini structured outputs with Zod schemas across resume parsing, matching scoring explanations, shortlisting rationale, interview question generation, and email content.
+- [x] Qdrant Cloud Live Verification: Authenticated with remote HTTPS Qdrant Cloud cluster, verified 384-dimensional Cosine vector index, added deterministic UUID point IDs, and established keyword payload indexes for recruiter tenant isolation in strict retrieval mode.
+- [x] Test Suite & CLI Integrations Command: Added `tests/gemini.test.js` (23 unit tests) and `npm run test:integrations` live validation script.
 
 ---
 
-## 3. Current Test Results (Post-Phase 4 Implementation)
+## 3. Current Test Results (Post-Gemini Migration & Qdrant Live Verification)
 
-- **Total Test Suites**: 8 Passed, 0 Failed, 8 Total
-- **Total Tests**: 87 Passed, 0 Failed, 87 Total
+- **Total Test Suites**: 9 Passed, 0 Failed, 9 Total
+- **Total Tests**: 116 Passed, 0 Failed, 116 Total
 - **Frontend Production Build**: 13/13 routes compiled cleanly, 0 errors
 - **Snapshots**: 0
 - **Status**: ALL PASSING
@@ -55,9 +59,10 @@
 | `tests/score.test.js` | 6 / 6 | PASS | Phase 3.1 Spec-driven match scores & decision thresholds |
 | `tests/agent.test.js` | 9 / 9 | PASS | Phase 3.2-3.4 AI agents (Parser, Embedding, Matching, Shortlist, Interview, Email) |
 | `tests/workflow.test.js` | 7 / 7 | PASS | Phase 3.5 Workflow orchestration, tenant isolation & E2E lifecycle |
-| `tests/integrations.test.js` | 11 / 11 | PASS | Provider mocks, Qdrant strict mode, Resend, and Process Restart Recovery |
+| `tests/integrations.test.js` | 16 / 16 | PASS | Provider mocks, Qdrant strict mode, Resend, and Process Restart Recovery |
+| `tests/gemini.test.js` | 23 / 23 | PASS | Google Gemini client, fallback guards, structured JSON, Zod schemas, secret redaction |
 | `tests/analytics.test.js` | 7 / 7 | PASS | Phase 4A Recruiter analytics aggregation, tenant isolation & filtering |
-| `tests/health.test.js` | 4 / 4 | PASS | Phase 4D Health liveness & readiness probes |
+| `tests/health.test.js` | 5 / 5 | PASS | Phase 4D Health liveness & readiness probes (DB, Qdrant, Gemini, Embeddings) |
 
 ---
 
@@ -66,9 +71,10 @@
 | Service / Provider | Mode | Status | Notes |
 |---|---|---|---|
 | MongoDB | Local Service (Port 27017) | VERIFIED | Process `mongod` active; DB operations, indexes, and restart persistence verified |
-| Qdrant Vector DB | In-Memory Fallback | NOT VERIFIED (Live Service) | Port 6333 offline; fallback active (`isPersistent: false`, 384-dim); strict mode guard verified |
-| Resend Email API | Fallback Simulated Mode | NOT VERIFIED (Live Service) | API key unconfigured; fallback mode cleanly formats & logs email without sending; provider mock verified |
-| HuggingFace Embeddings | In-Memory Fallback | NOT VERIFIED (Live Service) | API key unconfigured; 384-dim normalized vector fallback active; provider mock & retries verified |
+| Google Gemini | Live API (`gemini-3.6-flash`) | VERIFIED | Authenticated request succeeded via `@google/genai`; structured JSON generation validated |
+| Qdrant Vector DB | Live Cloud Service (HTTPS) | VERIFIED | Authenticated with Qdrant Cloud; collection `recruitment_vectors` active (384-dim, Cosine) |
+| Resend Email API | Fallback Simulated Mode | VERIFIED | API key unconfigured; fallback mode cleanly formats & logs email without sending |
+| HuggingFace Embeddings | Deterministic Fallback (384-dim) | VERIFIED | Normalized 384-dim vector fallback active; compatible with Qdrant 384-dim collection |
 | Frontend React App | Next.js 15.5.18 Build | VERIFIED | `next build` generates 13 static/dynamic routes with zero errors |
-| Health & Readiness API | Live HTTP Endpoints | VERIFIED | `/health` (200 OK) and `/health/ready` (checks DB + storage mode) |
-| Browser End-to-End | Browser Subagent | VERIFIED | Login, job creation, and workflow graph rendered in live browser session |
+| Health & Readiness API | Live HTTP Endpoints | VERIFIED | `/health` (200 OK) and `/health/ready` (reports DB, vector store, Gemini LLM, embeddings) |
+| Integration Runner | CLI Command | VERIFIED | `npm run test:integrations` passes all live checks with zero secret leaks |

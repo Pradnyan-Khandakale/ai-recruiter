@@ -22,7 +22,8 @@ const {
   storeDocument,
   searchContext,
   deleteDocument,
-  ensureCollection
+  ensureCollection,
+  validateQdrantConnection
 } = require("../src/rag/rag.service");
 const { runEmailAgent } = require("../src/agents/email.agent");
 
@@ -181,32 +182,173 @@ describe("Comprehensive Integration & Resilience Verification", () => {
       ).rejects.toThrow(/Persistent Qdrant search is required/i);
     });
 
-    test("in-memory fallback works cleanly and isolates tenants when Qdrant is offline", async () => {
-      const docA = await storeDocument({
-        id: "doc_recruiter_a",
-        type: "resume",
-        text: "Senior React engineer with Next.js expertise",
-        metadata: { recruiter_id: "recruiter_A", job_id: "job_1" }
+    test("validateQdrantConnection reports PASS for valid configuration, 384 dimensions, and Cosine metric", async () => {
+      global.fetch = jest.fn().mockImplementation(async (url) => {
+        if (url.endsWith("/collections")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ result: { collections: [{ name: "recruitment_vectors" }] } })
+          };
+        }
+        if (url.includes("/collections/recruitment_vectors")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              result: {
+                config: { params: { vectors: { size: 384, distance: "Cosine" } } },
+                indexed_vectors_count: 10,
+                points_count: 10
+              }
+            })
+          };
+        }
+        return { ok: false, status: 404 };
       });
 
-      expect(docA.provider).toBe("in-memory-fallback");
-      expect(docA.isPersistent).toBe(false);
-
-      const docB = await storeDocument({
-        id: "doc_recruiter_b",
-        type: "resume",
-        text: "Senior React engineer with Next.js expertise",
-        metadata: { recruiter_id: "recruiter_B", job_id: "job_2" }
+      const res = await validateQdrantConnection({
+        qdrantUrl: "https://cloud.qdrant.io",
+        apiKey: "mock_test_key",
+        collection: "recruitment_vectors"
       });
 
-      // Recruiter A search should find only their document
-      const resultsA = await searchContext("React engineer", { recruiter_id: "recruiter_A" });
-      expect(resultsA.every((r) => r.metadata.recruiter_id === "recruiter_A")).toBe(true);
-      expect(resultsA.some((r) => r.metadata.recruiter_id === "recruiter_B")).toBe(false);
+      expect(res.ok).toBe(true);
+      expect(res.status).toBe("PASS");
+      expect(res.vectorDimensions).toBe(384);
+      expect(res.distanceMetric).toBe("Cosine");
+      expect(res.message).toMatch(/verified/i);
+    });
 
-      // Cleanup
-      await deleteDocument("doc_recruiter_a");
-      await deleteDocument("doc_recruiter_b");
+    test("validateQdrantConnection reports FAIL — AUTHENTICATION when service rejects credentials", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized"
+      });
+
+      const res = await validateQdrantConnection({
+        qdrantUrl: "https://cloud.qdrant.io",
+        apiKey: "invalid_key",
+        collection: "recruitment_vectors"
+      });
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe("FAIL — AUTHENTICATION");
+      expect(res.code).toBe("UNAUTHORIZED");
+    });
+
+    test("validateQdrantConnection reports FAIL — CONNECTIVITY on network failure", async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:6333"));
+
+      const res = await validateQdrantConnection({
+        qdrantUrl: "http://127.0.0.1:6333",
+        collection: "recruitment_vectors"
+      });
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe("FAIL — CONNECTIVITY");
+      expect(res.code).toBe("NETWORK_ERROR");
+    });
+
+    test("validateQdrantConnection reports PARTIAL when target collection is not found", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ result: { collections: [] } })
+      });
+
+      const res = await validateQdrantConnection({
+        qdrantUrl: "http://localhost:6333",
+        collection: "missing_collection"
+      });
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe("PARTIAL");
+      expect(res.code).toBe("COLLECTION_NOT_FOUND");
+    });
+
+    test("validateQdrantConnection reports PARTIAL when vector dimension or distance metric is incompatible", async () => {
+      global.fetch = jest.fn().mockImplementation(async (url) => {
+        if (url.endsWith("/collections")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ result: { collections: [{ name: "recruitment_vectors" }] } })
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            result: {
+              config: { params: { vectors: { size: 1536, distance: "Euclid" } } }
+            }
+          })
+        };
+      });
+
+      const res = await validateQdrantConnection({
+        qdrantUrl: "http://localhost:6333",
+        collection: "recruitment_vectors"
+      });
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe("PARTIAL");
+      expect(res.code).toBe("INCOMPATIBLE_VECTOR_CONFIG");
+      expect(res.actualDimensions).toBe(1536);
+    });
+
+    test("mocked Qdrant store and search respects tenant isolation and UUID IDs", async () => {
+      let storedPoints = [];
+      global.fetch = jest.fn().mockImplementation(async (url, opts) => {
+        if (url.includes("/collections/") && url.includes("/points") && opts.method === "PUT") {
+          const body = JSON.parse(opts.body);
+          storedPoints = body.points;
+          return { ok: true, status: 200, json: async () => ({ result: { status: "acknowledged" } }) };
+        }
+        if (url.includes("/points/search")) {
+          const searchBody = JSON.parse(opts.body);
+          const filterRecruiter = searchBody.filter?.must?.find((m) => m.key === "metadata.recruiter_id")?.match?.value;
+          const matches = storedPoints.filter((p) => p.payload.metadata.recruiter_id === filterRecruiter);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              result: matches.map((m) => ({
+                id: m.id,
+                score: 0.95,
+                payload: m.payload
+              }))
+            })
+          };
+        }
+        if (url.includes("/collections/")) {
+          return { ok: true, status: 200, json: async () => ({ status: "ok" }) };
+        }
+        return { ok: true, status: 200, json: async () => ({ status: "ok" }) };
+      });
+
+      const doc = await storeDocument({
+        id: "cand_isolated_123",
+        type: "resume",
+        text: "Full Stack Engineer with React and Node.js",
+        metadata: { recruiter_id: "recruiter_isolated_A", job_id: "job_99" }
+      });
+
+      expect(doc.provider).toBe("qdrant");
+      expect(doc.isPersistent).toBe(true);
+
+      // Verify UUID point ID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      expect(uuidRegex.test(storedPoints[0].id)).toBe(true);
+
+      const foundA = await searchContext("React", { recruiter_id: "recruiter_isolated_A" });
+      expect(foundA.length).toBeGreaterThan(0);
+      expect(foundA[0].metadata.recruiter_id).toBe("recruiter_isolated_A");
+
+      const foundB = await searchContext("React", { recruiter_id: "recruiter_isolated_B" });
+      expect(foundB.length).toBe(0);
     });
   });
 

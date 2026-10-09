@@ -127,7 +127,18 @@ function extractProjects(text, fallback = []) {
   return fallback;
 }
 
-async function runResumeParser({ candidate, filePath, hiringSpec }) {
+const { z } = require("zod");
+const geminiService = require("../services/gemini.service");
+
+const ResumeSchema = z.object({
+  name: z.string().optional(),
+  skills: z.array(z.string()).default([]),
+  experience: z.number().default(0),
+  education: z.string().default(""),
+  projects: z.array(z.string()).default([])
+});
+
+async function runResumeParser({ candidate, filePath, hiringSpec, options = {} }) {
   const extracted = await extractResumeText(filePath);
   if (!extracted.success) {
     return {
@@ -156,20 +167,63 @@ async function runResumeParser({ candidate, filePath, hiringSpec }) {
     }
   }
 
-  const finalSkills = uniqueSkills(detectedSkills);
+  const regexSkills = uniqueSkills(detectedSkills);
   const rawCandidateExp = typeof candidate?.experience === "number" ? candidate.experience : 0;
-  const experience = extractExperience(text, rawCandidateExp);
-  const education = extractEducation(text, candidate?.education || "");
-  const projects = extractProjects(text, Array.isArray(candidate?.projects) ? candidate.projects : []);
+  let experience = extractExperience(text, rawCandidateExp);
+  let education = extractEducation(text, candidate?.education || "");
+  let projects = extractProjects(text, Array.isArray(candidate?.projects) ? candidate.projects : []);
 
   const nameMatch = text.match(/(?:name\s*[:\n]\s*|^)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/m);
-  const name = nameMatch ? nameMatch[1].trim() : (candidate?.name || "Candidate");
+  let name = nameMatch ? nameMatch[1].trim() : (candidate?.name || "Candidate");
+
+  let parsedSkills = regexSkills;
+  let provider = "regex";
+
+  // Attempt Gemini structured extraction if available
+  const isStrict = Boolean(options.strict || process.env.REQUIRE_GEMINI === "true");
+  try {
+    const geminiRes = await geminiService.generateStructuredJson({
+      prompt: `Extract structured resume details from the following resume text:\n\n${text.slice(0, 10000)}`,
+      systemInstruction: "You are an expert recruitment parser. Extract candidate name, list of technical and professional skills, total years of experience as a number, highest education, and top key projects from the resume text. Return strictly valid JSON adhering to schema.",
+      schema: ResumeSchema,
+      strict: isStrict
+    });
+
+    if (geminiRes.success && geminiRes.data) {
+      provider = "gemini";
+      if (geminiRes.data.name && geminiRes.data.name !== "Candidate") {
+        name = geminiRes.data.name;
+      }
+      if (Array.isArray(geminiRes.data.skills) && geminiRes.data.skills.length > 0) {
+        parsedSkills = uniqueSkills([...geminiRes.data.skills, ...regexSkills]);
+      }
+      if (typeof geminiRes.data.experience === "number" && geminiRes.data.experience > 0) {
+        experience = geminiRes.data.experience;
+      }
+      if (geminiRes.data.education) {
+        education = geminiRes.data.education;
+      }
+      if (Array.isArray(geminiRes.data.projects) && geminiRes.data.projects.length > 0) {
+        projects = geminiRes.data.projects;
+      }
+    } else if (isStrict) {
+      throw new Error(geminiRes.error || "Gemini resume parsing failed");
+    }
+  } catch (err) {
+    if (isStrict) {
+      return {
+        success: false,
+        error: `Strict Gemini resume parsing failed: ${err.message}`
+      };
+    }
+  }
 
   return {
     success: true,
+    provider,
     data: {
       name,
-      skills: finalSkills,
+      skills: parsedSkills,
       experience,
       education,
       projects,

@@ -21,8 +21,14 @@ describe("Phase 3 — Workflow Orchestration and End-to-End Execution", () => {
   let recruiterB;
   let tokenB;
   const dummyPdfPath = path.join(__dirname, "workflow-resume.pdf");
+  const originalGeminiKey = env.geminiApiKey;
+  const originalQdrantKey = env.qdrantApiKey;
+  const originalQdrantUrl = env.qdrantUrl;
 
   beforeAll(async () => {
+    env.geminiApiKey = "";
+    env.qdrantApiKey = "";
+    env.qdrantUrl = "http://localhost:6333";
     if (mongoose.connection.readyState === 0) {
       await mongoose.connect(testDbUri);
     }
@@ -74,6 +80,9 @@ describe("Phase 3 — Workflow Orchestration and End-to-End Execution", () => {
     await Application.deleteMany({});
     await Workflow.deleteMany({});
     await WorkflowLog.deleteMany({});
+    env.geminiApiKey = originalGeminiKey;
+    env.qdrantApiKey = originalQdrantKey;
+    env.qdrantUrl = originalQdrantUrl;
     await mongoose.connection.close();
   });
 

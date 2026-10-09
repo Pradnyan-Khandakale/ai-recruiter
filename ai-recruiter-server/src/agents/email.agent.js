@@ -1,6 +1,13 @@
 const { Resend } = require("resend");
+const { z } = require("zod");
 const { env } = require("../config/env");
 const { loadEmailSpec } = require("../utils/specLoader");
+const geminiService = require("../services/gemini.service");
+
+const EmailContentSchema = z.object({
+  subject: z.string().min(5),
+  body: z.string().min(10)
+});
 
 function renderTemplate(template, values = {}) {
   let result = String(template || "");
@@ -11,7 +18,7 @@ function renderTemplate(template, values = {}) {
   return result;
 }
 
-async function runEmailAgent({ candidate, job, shortlisting }) {
+async function runEmailAgent({ candidate, job, shortlisting, options = {} }) {
   const isShortlisted = shortlisting?.data?.status === "shortlisted";
   const templateName = isShortlisted ? "interview-invite" : "rejection";
   const emailSpec = loadEmailSpec(templateName);
@@ -34,8 +41,42 @@ async function runEmailAgent({ candidate, job, shortlisting }) {
     job_title: jobTitle
   };
 
-  const subject = renderTemplate(templateSubject, values);
-  const body = renderTemplate(templateBody, values);
+  let subject = renderTemplate(templateSubject, values);
+  let body = renderTemplate(templateBody, values);
+
+  const isStrict = Boolean(options.strict || process.env.REQUIRE_GEMINI === "true");
+  try {
+    const prompt = `Compose a professional candidate email:
+Candidate Name: ${candidateName}
+Job Title: ${jobTitle}
+Status: ${isShortlisted ? "Shortlisted for Interview" : "Application Not Selected"}
+Template guide:
+Subject: ${subject}
+Body: ${body}
+Return structured JSON with personalized subject and body adhering to schema.`;
+
+    const geminiRes = await geminiService.generateStructuredJson({
+      prompt,
+      systemInstruction: "You are an executive talent recruiter. Write polished, respectful, personalized emails adhering to schema.",
+      schema: EmailContentSchema,
+      strict: isStrict
+    });
+
+    if (geminiRes.success && geminiRes.data?.body) {
+      if (geminiRes.data.subject) subject = geminiRes.data.subject;
+      body = geminiRes.data.body;
+    } else if (isStrict) {
+      throw new Error(geminiRes.error || "Gemini email generation failed");
+    }
+  } catch (err) {
+    if (isStrict) {
+      return {
+        success: false,
+        error: `Strict Gemini email generation failed: ${err.message}`,
+        provider: "gemini"
+      };
+    }
+  }
 
   if (!env.resendApiKey) {
     return {

@@ -49,14 +49,17 @@ function createApp() {
 
     const hasHfKey = Boolean(process.env.HUGGINGFACE_API_KEY || process.env.HF_API_KEY);
     const hasResendKey = Boolean(env.resendApiKey);
+    const hasGeminiKey = Boolean(env.geminiApiKey);
 
     const requirePersistent = process.env.REQUIRE_PERSISTENT_STORAGE === "true";
     const requireSemantic = process.env.REQUIRE_SEMANTIC_EMBEDDINGS === "true";
+    const requireGemini = process.env.REQUIRE_GEMINI === "true";
 
     const isReady =
       isDbConnected &&
       (!requirePersistent || isQdrantReady) &&
-      (!requireSemantic || hasHfKey);
+      (!requireSemantic || hasHfKey) &&
+      (!requireGemini || hasGeminiKey);
 
     const statusCode = isReady ? 200 : 503;
     res.status(statusCode).json({
@@ -75,6 +78,11 @@ function createApp() {
           embeddings: {
             provider: hasHfKey ? "huggingface" : "hash-deterministic-fallback",
             is_semantic: hasHfKey
+          },
+          llm: {
+            provider: hasGeminiKey ? "gemini" : "fallback",
+            model: env.geminiModel || "gemini-2.5-flash",
+            is_live: hasGeminiKey
           },
           email: {
             provider: hasResendKey ? "resend" : "fallback",

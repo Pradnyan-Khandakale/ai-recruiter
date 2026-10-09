@@ -4,6 +4,23 @@ const { runResumeParser } = require("../src/agents/resumeParser.agent");
 const { runEmbeddingAgent } = require("../src/agents/embedding.agent");
 const { runInterviewAgent } = require("../src/agents/interview.agent");
 const { runEmailAgent } = require("../src/agents/email.agent");
+const { env } = require("../src/config/env");
+
+const originalGeminiKey = env.geminiApiKey;
+const originalQdrantKey = env.qdrantApiKey;
+const originalQdrantUrl = env.qdrantUrl;
+
+beforeAll(() => {
+  env.geminiApiKey = "";
+  env.qdrantApiKey = "";
+  env.qdrantUrl = "http://localhost:6333";
+});
+
+afterAll(() => {
+  env.geminiApiKey = originalGeminiKey;
+  env.qdrantApiKey = originalQdrantKey;
+  env.qdrantUrl = originalQdrantUrl;
+});
 
 test("shortlisting agent returns serializable JSON", async () => {
   const result = await runShortlistingAgent({

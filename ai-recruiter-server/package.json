@@ -8,9 +8,11 @@
     "start": "node src/server.js",
     "check": "find src tests -name '*.js' -print0 | xargs -0 -n 1 node --check",
     "test": "jest --runInBand",
+    "test:integrations": "node scripts/validate-integrations.js",
     "audit": "npm audit"
   },
   "dependencies": {
+    "@google/genai": "^2.28.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

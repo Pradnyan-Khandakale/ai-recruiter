@@ -5,6 +5,7 @@ const { createApp } = require("../src/app");
 describe("Phase 4D — Health & Dependency Readiness Endpoints", () => {
   let app;
   const testDbUri = process.env.MONGODB_URI || "mongodb://localhost:27017/ai-recruitment-test";
+  jest.setTimeout(25000);
 
   beforeAll(async () => {
     if (mongoose.connection.readyState === 0) {
@@ -32,6 +33,7 @@ describe("Phase 4D — Health & Dependency Readiness Endpoints", () => {
   test("GET /health/ready returns 200 with dependency audit when connected in fallback/dev mode", async () => {
     delete process.env.REQUIRE_PERSISTENT_STORAGE;
     delete process.env.REQUIRE_SEMANTIC_EMBEDDINGS;
+    delete process.env.REQUIRE_GEMINI;
 
     const res = await request(app).get("/health/ready");
     expect(res.status).toBe(200);
@@ -41,20 +43,42 @@ describe("Phase 4D — Health & Dependency Readiness Endpoints", () => {
     expect(res.body.data.dependencies.database.status).toBe("connected");
     expect(["qdrant", "in-memory-fallback"]).toContain(res.body.data.dependencies.vector_store.provider);
     expect(["huggingface", "hash-deterministic-fallback"]).toContain(res.body.data.dependencies.embeddings.provider);
+    expect(res.body.data.dependencies.llm).toBeDefined();
+    expect(["gemini", "fallback"]).toContain(res.body.data.dependencies.llm.provider);
   });
 
   test("GET /health/ready returns 503 when strict persistent storage is required but Qdrant is offline", async () => {
     process.env.REQUIRE_PERSISTENT_STORAGE = "true";
+    const { env } = require("../src/config/env");
+    const originalUrl = env.qdrantUrl;
+    env.qdrantUrl = "http://127.0.0.1:63339"; // Unreachable offline endpoint for deterministic offline testing
 
     try {
       const res = await request(app).get("/health/ready");
-      // Since Qdrant port 6333 is offline in this environment:
       expect(res.status).toBe(503);
       expect(res.body.success).toBe(false);
       expect(res.body.data.status).toBe("not_ready");
       expect(res.body.data.dependencies.vector_store.is_persistent).toBe(false);
     } finally {
+      env.qdrantUrl = originalUrl;
       delete process.env.REQUIRE_PERSISTENT_STORAGE;
+    }
+  });
+
+  test("GET /health/ready returns 503 when strict Gemini LLM is required but key is missing", async () => {
+    process.env.REQUIRE_GEMINI = "true";
+    const { env } = require("../src/config/env");
+    const originalKey = env.geminiApiKey;
+    env.geminiApiKey = "";
+
+    try {
+      const res = await request(app).get("/health/ready");
+      expect(res.status).toBe(503);
+      expect(res.body.success).toBe(false);
+      expect(res.body.data.dependencies.llm.is_live).toBe(false);
+    } finally {
+      env.geminiApiKey = originalKey;
+      delete process.env.REQUIRE_GEMINI;
     }
   });
 
