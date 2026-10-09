@@ -1,0 +1,11 @@
+{
+  "workflow": [
+    "resume_parser",
+    "embedding_agent",
+    "matching_agent",
+    "shortlisting_agent",
+    "human_approval",
+    "interview_agent",
+    "email_agent"
+  ]
+}

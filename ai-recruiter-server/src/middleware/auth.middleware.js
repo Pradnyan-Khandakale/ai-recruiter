@@ -40,6 +40,35 @@ async function requireAuth(req, res, next) {
   }
 }
 
+async function optionalAuth(req, res, next) {
+  const token = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice(7)
+    : null;
+
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, env.jwtSecret);
+    const user = await User.findById(decoded.id);
+    if (user) {
+      req.user = {
+        id: user._id.toString(),
+        email: user.email,
+        role: normalizeRole(user.role),
+        name: user.name
+      };
+    } else {
+      req.user = null;
+    }
+  } catch {
+    req.user = null;
+  }
+  return next();
+}
+
 function requireRole(role) {
   return (req, res, next) => {
     if (!req.user) {
@@ -52,4 +81,4 @@ function requireRole(role) {
   };
 }
 
-module.exports = { requireAuth, requireRole };
+module.exports = { requireAuth, requireRole, optionalAuth };

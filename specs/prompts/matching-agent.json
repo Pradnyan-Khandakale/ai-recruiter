@@ -1,0 +1,8 @@
+{
+  "name": "matching-agent",
+  "weights": {
+    "required_skills": 60,
+    "preferred_skills": 25,
+    "experience": 15
+  }
+}

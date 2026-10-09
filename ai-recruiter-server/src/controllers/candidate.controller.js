@@ -2,19 +2,22 @@ const candidateService = require("../services/candidate.service");
 const { sendSuccess } = require("../utils/response");
 
 async function uploadCandidate(req, res) {
-  // TODO: Save the candidate with the uploaded resume, start the hiring workflow,
-  // TODO: and respond with 201 { candidate, workflow }.
-  return res.status(501).json({ success: false, error: { message: "Candidate upload is not implemented yet" } });
+  const result = await candidateService.uploadCandidate(req.body, req.file);
+  return sendSuccess(res, result, 201);
 }
 
 async function listCandidates(req, res) {
-  // TODO: Respond with every candidate and its populated job.
-  return res.status(501).json({ success: false, error: { message: "List candidates is not implemented yet" } });
+  const candidates = await candidateService.listCandidates(req.user, req.query);
+  return sendSuccess(res, candidates, 200);
 }
 
 async function getCandidate(req, res) {
-  // TODO: Respond with the candidate for req.params.id.
-  return res.status(501).json({ success: false, error: { message: "Get candidate is not implemented yet" } });
+  const candidate = await candidateService.getCandidate(req.params.id, req.user);
+  return sendSuccess(res, candidate, 200);
 }
 
-module.exports = { uploadCandidate, listCandidates, getCandidate };
+module.exports = {
+  uploadCandidate,
+  listCandidates,
+  getCandidate
+};

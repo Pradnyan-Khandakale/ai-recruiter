@@ -1,10 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BriefcaseBusiness, CheckCircle2, Save, Sparkles, ArrowLeft } from "lucide-react";
+import { BriefcaseBusiness, Save, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ const schema = z.object({
   required_skills: z.string().trim().min(1, "Please specify at least one required skill"),
   preferred_skills: z.string().optional().default(""),
   min_experience: z.coerce.number().min(0, "Minimum experience must be 0 or greater").default(0),
-  status: z.enum(["draft", "published"]).default("published")
+  status: z.enum(["draft", "published", "closed"]).default("published")
 });
 
 function splitSkills(value) {
@@ -28,25 +29,62 @@ function splitSkills(value) {
     .filter(Boolean);
 }
 
-export function CreateJobForm() {
+export function EditJobForm() {
   const router = useRouter();
+  const params = useParams();
+  const jobId = params?.id;
+
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
     setError,
     watch
   } = useForm({
     resolver: zodResolver(schema),
     defaultValues: {
-      title: "Frontend Developer",
-      description: "Build production React and Next.js interfaces for hiring products.",
-      required_skills: "React, JavaScript, CSS",
-      preferred_skills: "Next.js, Tailwind CSS",
-      min_experience: 2,
+      title: "",
+      description: "",
+      required_skills: "",
+      preferred_skills: "",
+      min_experience: 0,
       status: "published"
     }
   });
+
+  useEffect(() => {
+    if (!jobId) return;
+    async function loadJob() {
+      try {
+        setLoading(true);
+        setFetchError("");
+        const job = await api.getJob(jobId);
+        if (job) {
+          reset({
+            title: job.title || "",
+            description: job.description || "",
+            required_skills: Array.isArray(job.required_skills)
+              ? job.required_skills.join(", ")
+              : "",
+            preferred_skills: Array.isArray(job.preferred_skills)
+              ? job.preferred_skills.join(", ")
+              : "",
+            min_experience: job.min_experience || 0,
+            status: job.status || "published"
+          });
+        }
+      } catch (err) {
+        setFetchError(err?.message || "Failed to load job details");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadJob();
+  }, [jobId, reset]);
 
   const requiredSkills = splitSkills(watch("required_skills"));
   const preferredSkills = splitSkills(watch("preferred_skills"));
@@ -59,23 +97,46 @@ export function CreateJobForm() {
         required_skills: splitSkills(values.required_skills),
         preferred_skills: splitSkills(values.preferred_skills),
         min_experience: Number(values.min_experience),
-        workflow_spec_id: "default-hiring-workflow",
-        hiring_spec_id: "frontend-developer",
-        status: values.status || "published"
+        status: values.status
       };
 
-      await api.createJob(payload);
+      await api.updateJob(jobId, payload);
       router.push("/dashboard/jobs");
     } catch (err) {
       setError("root", {
         type: "manual",
-        message: err?.message || "Failed to create job"
+        message: err?.message || "Failed to update job"
       });
     }
   }
 
   const rootError = errors.root?.message;
   const firstFieldError = Object.values(errors).find((e) => e?.message)?.message;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12 text-slate-500">
+        <Loader2 className="mr-2 animate-spin" size={20} />
+        Loading job details...
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 p-6">
+        <p className="rounded-md border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          {fetchError}
+        </p>
+        <Link
+          href="/dashboard/jobs"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-teal-700 hover:underline"
+        >
+          <ArrowLeft size={16} /> Back to jobs
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -88,27 +149,11 @@ export function CreateJobForm() {
         </Link>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-emerald-100 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 p-6 text-white shadow-sm">
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-2xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-md bg-white/15 px-3 py-1 text-sm font-semibold">
-              <Sparkles size={16} />
-              Hiring workflow builder
-            </div>
-            <h1 className="text-3xl font-bold">Create job</h1>
-            <p className="mt-2 text-sm text-emerald-50">
-              Role details, skill signals, and experience criteria.
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            {["Define", "Publish", "Review"].map((step) => (
-              <div key={step} className="rounded-md bg-white/15 px-3 py-2">
-                <CheckCircle2 className="mx-auto mb-1" size={18} />
-                <p className="text-xs font-bold">{step}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-900 p-6 text-white shadow-sm">
+        <h1 className="text-3xl font-bold">Edit Job</h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Update role specifications, requirements, and publishing status.
+        </p>
       </div>
 
       <Card className="border-slate-200 bg-white/95 p-0">
@@ -118,7 +163,6 @@ export function CreateJobForm() {
               Title
               <Input
                 className="mt-2 border-slate-200 bg-slate-50 focus:border-teal-600"
-                placeholder="e.g. Frontend Developer"
                 {...register("title")}
               />
             </label>
@@ -128,7 +172,6 @@ export function CreateJobForm() {
               <Textarea
                 rows={4}
                 className="mt-2 border-slate-200 bg-slate-50 focus:border-teal-600"
-                placeholder="Describe role responsibilities and qualifications..."
                 {...register("description")}
               />
             </label>
@@ -138,7 +181,6 @@ export function CreateJobForm() {
                 Required skills (comma-separated)
                 <Input
                   className="mt-2 border-slate-200 bg-slate-50 focus:border-teal-600"
-                  placeholder="React, JavaScript, CSS"
                   {...register("required_skills")}
                 />
               </label>
@@ -147,7 +189,6 @@ export function CreateJobForm() {
                 Preferred skills (comma-separated)
                 <Input
                   className="mt-2 border-slate-200 bg-slate-50 focus:border-teal-600"
-                  placeholder="Next.js, Tailwind CSS"
                   {...register("preferred_skills")}
                 />
               </label>
@@ -170,8 +211,9 @@ export function CreateJobForm() {
                   className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
                   {...register("status")}
                 >
-                  <option value="published">Published (Publicly visible)</option>
-                  <option value="draft">Draft (Private to recruiter)</option>
+                  <option value="published">Published (Public)</option>
+                  <option value="draft">Draft (Private)</option>
+                  <option value="closed">Closed</option>
                 </select>
               </label>
             </div>
@@ -188,7 +230,7 @@ export function CreateJobForm() {
               disabled={isSubmitting}
             >
               <Save size={18} />
-              {isSubmitting ? "Saving..." : "Save job"}
+              {isSubmitting ? "Updating..." : "Save changes"}
             </Button>
           </div>
 
@@ -211,7 +253,7 @@ export function CreateJobForm() {
                       </span>
                     ))
                   ) : (
-                    <span className="text-xs text-slate-400">None added yet</span>
+                    <span className="text-xs text-slate-400">None added</span>
                   )}
                 </div>
               </div>
@@ -228,7 +270,7 @@ export function CreateJobForm() {
                       </span>
                     ))
                   ) : (
-                    <span className="text-xs text-slate-400">None added yet</span>
+                    <span className="text-xs text-slate-400">None added</span>
                   )}
                 </div>
               </div>

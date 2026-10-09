@@ -1,0 +1,6 @@
+{
+  "running": "blue",
+  "success": "green",
+  "failed": "red",
+  "waiting_approval": "yellow"
+}

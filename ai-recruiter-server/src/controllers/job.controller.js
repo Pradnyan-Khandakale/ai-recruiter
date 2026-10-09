@@ -1,24 +1,42 @@
 const jobService = require("../services/job.service");
+const candidateService = require("../services/candidate.service");
 const { sendSuccess } = require("../utils/response");
 
 async function createJob(req, res) {
-  // TODO: Create the job for req.user.id and respond with 201.
-  return res.status(501).json({ success: false, error: { message: "Create job is not implemented yet" } });
+  const job = await jobService.createJob(req.body, req.user.id);
+  return sendSuccess(res, job, 201);
 }
 
 async function listJobs(req, res) {
-  // TODO: Respond with every job, newest first.
-  return res.status(501).json({ success: false, error: { message: "List jobs is not implemented yet" } });
+  const jobs = await jobService.listJobs(req.query, req.user);
+  return sendSuccess(res, jobs, 200);
 }
 
 async function getJob(req, res) {
-  // TODO: Respond with the job for req.params.id.
-  return res.status(501).json({ success: false, error: { message: "Get job is not implemented yet" } });
+  const job = await jobService.getJob(req.params.id, req.user);
+  return sendSuccess(res, job, 200);
 }
 
 async function updateJob(req, res) {
-  // TODO: Update the job for req.params.id and respond with the saved document.
-  return res.status(501).json({ success: false, error: { message: "Update job is not implemented yet" } });
+  const job = await jobService.updateJob(req.params.id, req.body, req.user);
+  return sendSuccess(res, job, 200);
 }
 
-module.exports = { createJob, listJobs, getJob, updateJob };
+async function deleteJob(req, res) {
+  const result = await jobService.deleteJob(req.params.id, req.user);
+  return sendSuccess(res, result, 200);
+}
+
+async function listJobApplications(req, res) {
+  const applications = await candidateService.listApplications(req.params.id, req.user);
+  return sendSuccess(res, applications, 200);
+}
+
+module.exports = {
+  createJob,
+  listJobs,
+  getJob,
+  updateJob,
+  deleteJob,
+  listJobApplications
+};
